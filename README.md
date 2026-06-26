@@ -313,7 +313,30 @@ python scripts/16_sweep_pi0_activation_ablation.py \
   --no-save-activations
 ```
 
-**Run a shard.**
+**Run locally or on one machine.**
+
+The ablation script can be run directly with Python. For a small smoke test, restrict layers and bins:
+
+```bash
+python scripts/16_sweep_pi0_activation_ablation.py \
+  --config configs/demo.yaml \
+  --pi0-path "$PI0_PATH" \
+  --output-dir "$ABLATION_DIR" \
+  --baseline-dir "$ABLATION_DIR/baseline" \
+  --skip-baseline \
+  --task libero_spatial \
+  --task-id 1 \
+  --instruction "pick up the black bowl from table center and place it on the plate" \
+  --num-episodes 1 \
+  --max-steps 80 \
+  --layers 0,17,35 \
+  --token-bins 96 \
+  --bin-indices 0,24,48,72 \
+  --no-save-video \
+  --no-save-activations
+```
+
+For the full sweep on one machine, run one shard at a time:
 
 ```bash
 python scripts/16_sweep_pi0_activation_ablation.py \
@@ -338,7 +361,9 @@ python scripts/16_sweep_pi0_activation_ablation.py \
 
 Repeat `--shard-index 0..7`.
 
-**Submit via rjob.**
+**Optional cluster-only rjob submission.**
+
+The rjob scripts are only needed on the PJLab-style cluster, or on a similar cluster where jobs must be submitted through `rjob`. If running locally or inside an interactive GPU session, skip this section and use the direct Python commands above.
 
 The helper scripts are:
 
