@@ -8,23 +8,80 @@ This repository is a compact handoff version of the VLA interpretability project
 
 Static S2D evaluation scripts, OpenVLA analysis, and exploratory notebooks/results were intentionally removed from this handoff repo.
 
+## Download
+
+Clone the handoff repository:
+
+```bash
+git clone https://github.com/bossxjh/vla_interpretability_handoff.git
+cd vla_interpretability_handoff
+```
+
+All generated artifacts are ignored by git and should be written under `outputs/` or a large cluster storage path.
+
 ## Environment
 
-The lightweight Python requirements are in `requirements.txt`. Real PI0 / PI0.5 / LIBERO runs require a Linux GPU environment with LeRobot PI and LIBERO support.
+There are two levels of environment setup:
 
-Recommended cluster setup:
+- **Analysis-only environment**: enough for plotting, probe training from existing `.npz` activations, and CSV heatmaps.
+- **Real PI0 / PI0.5 + LIBERO environment**: required for activation extraction, closed-loop rollouts, and ablation sweeps.
+
+### Option A: Analysis-Only Environment
+
+Use this if the activations or rollout CSVs have already been generated:
+
+```bash
+conda env create -f environment.yml
+conda activate vla-interpretability
+python -m pip install -r requirements.txt
+```
+
+Quick check:
+
+```bash
+python -m py_compile \
+  scripts/03_train_layerwise_probe.py \
+  scripts/05_plot_results.py \
+  scripts/18_plot_pi0_ablation_heatmaps.py
+```
+
+### Option B: Real PI0 / PI0.5 + LIBERO Environment
+
+Real model and simulator runs require Linux + GPU + MuJoCo/EGL. The known working setup used during development is:
 
 ```bash
 conda activate /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/lerobot
 cd /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_interpretability_handoff
+source scripts/setup_cluster_env.sh
+```
 
-export XDG_CACHE_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache
-export HF_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface
-export TORCH_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/torch
-export LIBERO_ASSETS_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/libero/assets
-export HF_LEROBOT_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/dataset
-export HF_HUB_OFFLINE=1
+If the recipient needs to build a new environment from scratch:
+
+```bash
+conda create -y -p /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/vla_interpretability python=3.10
+conda activate /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/vla_interpretability
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install "lerobot[pi,libero]@git+https://github.com/huggingface/lerobot.git"
+```
+
+On a headless cluster node, also install or provide EGL/OpenGL runtime libraries:
+
+```bash
 export MUJOCO_GL=egl
+sudo apt update
+sudo apt install -y libegl1 libopengl0 libgl1 mesa-utils
+```
+
+If `sudo` is unavailable inside the job container, use an image that already contains these libraries.
+
+### Cluster Cache and Checkpoints
+
+The helper script sets the environment variables used by all demos:
+
+```bash
+cd /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_interpretability_handoff
+source scripts/setup_cluster_env.sh
 ```
 
 Common checkpoint paths used during development:
@@ -32,6 +89,34 @@ Common checkpoint paths used during development:
 ```bash
 export PI05_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi05_libero_finetuned_v044/snapshots/dbf8a3f794a9c4297b44f40b752712f50073d945
 export PI0_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi0_libero_finetuned/snapshots/45dcc8fc0e02601c8ccf0554fbd1d26a55070c1f
+```
+
+If the checkpoints are not present locally, download them before setting `HF_HUB_OFFLINE=1`, or point `PI05_PATH` / `PI0_PATH` to the local snapshot directories.
+
+### Environment Smoke Tests
+
+Run these before launching long jobs:
+
+```bash
+python - <<'PY'
+import torch
+print("torch", torch.__version__, "cuda", torch.cuda.is_available())
+from lerobot.configs.policies import PreTrainedConfig
+from lerobot.policies.pi0 import PI0Policy
+from lerobot.policies.pi05 import PI05Policy
+from lerobot.envs.configs import LiberoEnv
+print("lerobot pi/libero imports OK")
+PY
+```
+
+Check LIBERO rendering:
+
+```bash
+python - <<'PY'
+import os
+print("MUJOCO_GL =", os.environ.get("MUJOCO_GL"))
+print("LIBERO_ASSETS_PATH =", os.environ.get("LIBERO_ASSETS_PATH"))
+PY
 ```
 
 ## Demo 1: PI0.5 Layerwise Linear Probing

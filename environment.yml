@@ -1,0 +1,22 @@
+name: vla-interpretability
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pillow
+  - pyyaml
+  - tqdm
+  - scikit-learn
+  - matplotlib
+  - pandas
+  - joblib
+  - h5py
+  - scipy
+  - imageio
+  - imageio-ffmpeg
+  - pip:
+      - -r requirements.txt
