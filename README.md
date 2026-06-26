@@ -21,43 +21,24 @@ All generated artifacts are ignored by git and should be written under `outputs/
 
 ## Environment
 
-There are two levels of environment setup:
-
-- **Analysis-only environment**: enough for plotting, probe training from existing `.npz` activations, and CSV heatmaps.
-- **Real PI0 / PI0.5 + LIBERO environment**: required for activation extraction, closed-loop rollouts, and ablation sweeps.
-
-### Option A: Analysis-Only Environment
-
-Use this if the activations or rollout CSVs have already been generated:
+Use one full environment for all three demos. This environment can run real PI0 / PI0.5 + LIBERO jobs and also covers the downstream analysis scripts.
 
 ```bash
 conda env create -f environment.yml
 conda activate vla-interpretability
-python -m pip install -r requirements.txt
 ```
 
-Quick check:
+If `conda env create -f environment.yml` has trouble resolving the LeRobot git dependency, use the equivalent manual setup:
 
 ```bash
-python -m py_compile \
-  scripts/03_train_layerwise_probe.py \
-  scripts/05_plot_results.py \
-  scripts/18_plot_pi0_ablation_heatmaps.py
-```
-
-### Option B: Real PI0 / PI0.5 + LIBERO Environment
-
-Real model and simulator runs require Linux + GPU + MuJoCo/EGL. A generic setup is:
-
-```bash
-conda create -y -n vla-interpretability-real python=3.10
-conda activate vla-interpretability-real
+conda create -y -n vla-interpretability python=3.10
+conda activate vla-interpretability
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install "lerobot[pi,libero]@git+https://github.com/huggingface/lerobot.git"
 ```
 
-On a headless cluster node, also install or provide EGL/OpenGL runtime libraries:
+Real model and simulator runs require Linux + GPU + MuJoCo/EGL. On a headless cluster node, install or provide EGL/OpenGL runtime libraries:
 
 ```bash
 export MUJOCO_GL=egl
@@ -66,6 +47,15 @@ sudo apt install -y libegl1 libopengl0 libgl1 mesa-utils
 ```
 
 If `sudo` is unavailable inside the job container, use an image that already contains these libraries.
+
+Quick check for the codebase:
+
+```bash
+python -m py_compile \
+  scripts/03_train_layerwise_probe.py \
+  scripts/05_plot_results.py \
+  scripts/18_plot_pi0_ablation_heatmaps.py
+```
 
 ### Checkpoints and Optional Cache Settings
 
