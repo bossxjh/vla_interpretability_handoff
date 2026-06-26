@@ -1,0 +1,10 @@
+-r requirements.txt
+
+# Real pi0.5 / LIBERO integration.
+# LIBERO simulation support is Linux-only in LeRobot and needs MuJoCo rendering setup.
+#
+# Recommended on a Linux GPU machine:
+#   export MUJOCO_GL=egl
+#   python -m pip install "lerobot[pi,libero]@git+https://github.com/huggingface/lerobot.git"
+#
+# Kept as comments because this dependency stack is large and platform-sensitive.

@@ -1,0 +1,70 @@
+seed: 42
+
+data:
+  num_samples: 500
+  image_size: 224
+  instruction: "pick up the black bowl from table center and place it on the plate"
+  state_path: "outputs/states/states.jsonl"
+  image_dir: "outputs/states/images"
+
+env:
+  name: "libero_dataset"
+  task: "libero_spatial"
+  task_id: 1
+  dataset_hdf5: null
+  dataset_dir: null
+  target_role: "pickup"
+  min_frame_fraction: 0.0
+  max_frame_fraction: 0.08
+  target_body_name: null
+  target_joint_name: null
+  target_site_name: null
+  camera_key: "observation.images.image"
+  wrist_camera_key: "pixels.image2"
+
+model:
+  name: "pi05"
+  pi05_pretrained_path: null
+  device: "auto"
+  pooling: "mean"
+  num_layers: 12
+  hidden_dim: 128
+  action_dim: 2
+  noise_std: 0.08
+
+probe:
+  target: "all"
+  alpha: 1.0
+  test_size: 0.2
+  shuffled_control: true
+  results_path: "outputs/probes/layerwise_probe_results.csv"
+  shuffled_results_path: "outputs/probes/layerwise_probe_results_shuffled.csv"
+
+outputs:
+  activations_path: "outputs/activations/activations.npz"
+  probes_dir: "outputs/probes"
+  figures_dir: "outputs/figures"
+
+online_pi0:
+  checkpoint_path: null
+  task: "libero_spatial"
+  task_id: 1
+  instruction: "pick up the black bowl from table center and place it on the plate"
+  num_episodes: 2
+  start_seed: 0
+  max_steps: 250
+  pickup_joint_name: "auto"
+  place_joint_name: "auto"
+  rotate_images_180: true
+  force_replan_every_step: true
+  replan_interval: 1
+  activation_dtype: "float16"
+  save_video: true
+  save_wrist_video: false
+  video_fps: 10
+  video_format: "mp4"
+  video_flip_180: true
+  require_mp4: true
+  output_dir: "outputs/rollouts/pi0_libero_spatial_task1_full_tokens"
+  rename_map:
+    observation.images.image2: "observation.images.wrist_image"

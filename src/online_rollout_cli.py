@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+
+from .online_rollout import DEFAULT_RENAME_MAP, POOLING_MODES, Pi05LiberoRolloutTracer
+from .utils import load_config, resolve_path, set_seed
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/demo.yaml")
+    parser.add_argument("--pi05-path", default=None, help="Local LeRobot PI0.5 checkpoint directory or Hugging Face repo id.")
+    parser.add_argument("--task", default=None, help="LIBERO suite, such as libero_object.")
+    parser.add_argument("--task-id", type=int, default=None)
+    parser.add_argument("--instruction", default=None, help="Fallback instruction if the environment does not expose one.")
+    parser.add_argument("--num-episodes", type=int, default=None)
+    parser.add_argument("--start-seed", type=int, default=None)
+    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--pickup-joint-name", default=None)
+    parser.add_argument("--place-joint-name", default=None)
+    parser.add_argument("--pooling", choices=POOLING_MODES, default=None)
+    parser.add_argument("--rotate-images-180", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--save-video", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--save-wrist-video", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--video-fps", type=int, default=None)
+    parser.add_argument("--video-format", choices=("gif", "mp4"), default=None)
+    parser.add_argument("--video-flip-180", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--rename-map",
+        default=None,
+        help='JSON rename map for policy inputs, e.g. \'{"observation.images.image2":"observation.images.wrist_image"}\'.',
+    )
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parents[1]
+    cfg = load_config(resolve_path(args.config, root))
+    rollout_cfg = cfg["online_pi05"]
+    seed = int(args.start_seed if args.start_seed is not None else rollout_cfg.get("start_seed", cfg["seed"]))
+    set_seed(seed)
+    checkpoint_path = args.pi05_path or os.environ.get("VLA_PI05_PATH") or rollout_cfg.get("checkpoint_path")
+    if not checkpoint_path:
+        raise ValueError("Provide `--pi05-path`, set VLA_PI05_PATH, or configure online_pi05.checkpoint_path.")
+    rename_map = json.loads(args.rename_map) if args.rename_map else dict(rollout_cfg.get("rename_map", DEFAULT_RENAME_MAP))
+    tracer = Pi05LiberoRolloutTracer(
+        checkpoint_path=str(checkpoint_path),
+        task=str(args.task or rollout_cfg.get("task", "libero_object")),
+        task_id=int(args.task_id if args.task_id is not None else rollout_cfg.get("task_id", 0)),
+        device=str(args.device or cfg["model"].get("device", "auto")),
+        pickup_joint_name=str(args.pickup_joint_name or rollout_cfg.get("pickup_joint_name", "auto")),
+        place_joint_name=str(args.place_joint_name or rollout_cfg.get("place_joint_name", "auto")),
+        instruction=str(
+            args.instruction
+            or rollout_cfg.get("instruction", "pick up the alphabet soup and place it in the basket")
+        ),
+        rename_map=rename_map,
+        pooling=str(args.pooling or rollout_cfg.get("pooling", "mean")),
+        rotate_images_180=bool(
+            args.rotate_images_180
+            if args.rotate_images_180 is not None
+            else rollout_cfg.get("rotate_images_180", True)
+        ),
+    )
+    try:
+        summary = tracer.collect(
+            output_dir=resolve_path(args.output_dir or rollout_cfg["output_dir"], root),
+            num_episodes=int(args.num_episodes if args.num_episodes is not None else rollout_cfg.get("num_episodes", 10)),
+            start_seed=seed,
+            max_steps=args.max_steps if args.max_steps is not None else rollout_cfg.get("max_steps"),
+            save_video=bool(
+                args.save_video if args.save_video is not None else rollout_cfg.get("save_video", True)
+            ),
+            save_wrist_video=bool(
+                args.save_wrist_video
+                if args.save_wrist_video is not None
+                else rollout_cfg.get("save_wrist_video", False)
+            ),
+            video_fps=int(args.video_fps if args.video_fps is not None else rollout_cfg.get("video_fps", 10)),
+            video_format=str(args.video_format or rollout_cfg.get("video_format", "gif")),
+            video_flip_180=bool(
+                args.video_flip_180
+                if args.video_flip_180 is not None
+                else rollout_cfg.get("video_flip_180", True)
+            ),
+        )
+    finally:
+        tracer.close()
+    print(json.dumps(summary, indent=2))
