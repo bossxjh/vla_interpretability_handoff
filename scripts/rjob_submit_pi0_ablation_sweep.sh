@@ -7,7 +7,9 @@ set -euo pipefail
 
 NUM_SHARDS="${NUM_SHARDS:-8}"
 JOB_PREFIX="${JOB_PREFIX:-pi0-ablate-spatial-t1}"
-WORKER="${WORKER:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_targeting_demo/scripts/rjob_pi0_ablation_worker.sh}"
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+WORKER="${WORKER:-${PROJECT_DIR}/scripts/rjob_pi0_ablation_worker.sh}"
+ENV_DIR="${ENV_DIR:-}"
 
 GPU="${GPU:-1}"
 CPU="${CPU:-32}"
@@ -16,9 +18,11 @@ CHARGED_GROUP="${CHARGED_GROUP:-pceval_gpu}"
 PRIVATE_MACHINE="${PRIVATE_MACHINE:-group}"
 IMAGE="${IMAGE:-registry.h.pjlab.org.cn/ailab-pceval-pceval_gpu/pcgroup:ubuntu22.04-cuda12.2.2-pjlab-testv1}"
 HOST_NETWORK="${HOST_NETWORK:-false}"
+RJOB_MOUNT_1="${RJOB_MOUNT_1:-}"
+RJOB_MOUNT_2="${RJOB_MOUNT_2:-}"
 
-OUTPUT_DIR="${OUTPUT_DIR:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep}"
-PI0_PATH="${PI0_PATH:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi0_libero_finetuned/snapshots/45dcc8fc0e02601c8ccf0554fbd1d26a55070c1f}"
+OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/outputs/ablation/pi0_ablation_spatial_task1_full_sweep}"
+PI0_PATH="${PI0_PATH:-}"
 TASK="${TASK:-libero_spatial}"
 TASK_ID="${TASK_ID:-1}"
 INSTRUCTION="${INSTRUCTION:-pick up the black bowl from table center and place it on the plate}"
@@ -35,6 +39,19 @@ BASELINE_WAIT_SECONDS="${BASELINE_WAIT_SECONDS:-7200}"
 AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
 AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
 
+if [ -z "${PI0_PATH}" ]; then
+  echo "[ERROR] PI0_PATH is not set. Example: PI0_PATH=/path/to/pi0_checkpoint $0" >&2
+  exit 1
+fi
+
+MOUNT_ARGS=()
+if [ -n "${RJOB_MOUNT_1}" ]; then
+  MOUNT_ARGS+=(--mount "${RJOB_MOUNT_1}")
+fi
+if [ -n "${RJOB_MOUNT_2}" ]; then
+  MOUNT_ARGS+=(--mount "${RJOB_MOUNT_2}")
+fi
+
 submit_one() {
   local name="$1"
   local mode="$2"
@@ -45,14 +62,15 @@ submit_one() {
     --memory "${MEMORY}" \
     --charged-group "${CHARGED_GROUP}" \
     --private-machine="${PRIVATE_MACHINE}" \
-    --mount gpfs://gpfs1/xiaojiahao:/mnt/shared-storage-user/xiaojiahao \
-    --mount gpfs://gpfs1/ailab-pceval:/mnt/shared-storage-user/ailab-pceval \
+    "${MOUNT_ARGS[@]}" \
     --image "${IMAGE}" \
     --custom-resources brainpp.cn/fuse=1 \
     -P 1 \
     --host-network="${HOST_NETWORK}" \
     -e DISTRIBUTED_JOB=true \
     -e MODE="${mode}" \
+    -e PROJECT_DIR="${PROJECT_DIR}" \
+    -e ENV_DIR="${ENV_DIR}" \
     -e NUM_SHARDS="${NUM_SHARDS}" \
     -e SHARD_INDEX="${shard_index}" \
     -e OUTPUT_DIR="${OUTPUT_DIR}" \

@@ -14,10 +14,10 @@ NUM_SHARDS="${NUM_SHARDS:-8}"
 SHARD_INDEX="${SHARD_INDEX:-0}"
 BASELINE_WAIT_SECONDS="${BASELINE_WAIT_SECONDS:-7200}"
 
-PROJECT_DIR="${PROJECT_DIR:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_targeting_demo}"
-ENV_DIR="${ENV_DIR:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/lerobot}"
-OUTPUT_DIR="${OUTPUT_DIR:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep}"
-PI0_PATH="${PI0_PATH:-/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi0_libero_finetuned/snapshots/45dcc8fc0e02601c8ccf0554fbd1d26a55070c1f}"
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+ENV_DIR="${ENV_DIR:-}"
+OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/outputs/ablation/pi0_ablation_spatial_task1_full_sweep}"
+PI0_PATH="${PI0_PATH:-}"
 
 TASK="${TASK:-libero_spatial}"
 TASK_ID="${TASK_ID:-1}"
@@ -47,28 +47,17 @@ echo "BIN_INDICES=${BIN_INDICES}"
 echo "BIN_STRIDE=${BIN_STRIDE}"
 
 echo "==== Cache/env setup ===="
-export XDG_CACHE_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache
-export HF_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface
-export TORCH_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/torch
-export LIBERO_ASSETS_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/libero/assets
-export HF_HUB_OFFLINE=1
-export MUJOCO_GL=egl
-export HF_LEROBOT_HOME=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/dataset
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${PROJECT_DIR}/outputs/.cache}"
+export HF_HOME="${HF_HOME:-${XDG_CACHE_HOME}/huggingface}"
+export TORCH_HOME="${TORCH_HOME:-${XDG_CACHE_HOME}/torch}"
+export LIBERO_ASSETS_PATH="${LIBERO_ASSETS_PATH:-${XDG_CACHE_HOME}/libero/assets}"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-0}"
+export MUJOCO_GL="${MUJOCO_GL:-egl}"
+export HF_LEROBOT_HOME="${HF_LEROBOT_HOME:-${PROJECT_DIR}/outputs/lerobot_home}"
 env | grep -E "XDG_CACHE_HOME|HF_HOME|TORCH_HOME|LIBERO_ASSETS_PATH|HF_HUB_OFFLINE|MUJOCO_GL|HF_LEROBOT_HOME" || true
 
-echo "==== Mount tos3 ===="
-TOS3_DIR=/mnt/shared-storage-user/xiaojiahao/tos3
-mkdir -p "${TOS3_DIR}"
-if mountpoint -q "${TOS3_DIR}"; then
-  echo "${TOS3_DIR} is already mounted; skip s3mount."
-else
-  /mnt/shared-storage-user/xiaojiahao/s3mount ailab-pceval "${TOS3_DIR}" \
-    --endpoint-url http://hfoss.h.pjlab.org.cn:8060 \
-    --allow-delete --allow-overwrite --force-path-style || true
-fi
-if [[ "${OUTPUT_DIR}" == "${TOS3_DIR}"/* ]] && ! mountpoint -q "${TOS3_DIR}"; then
-  echo "[ERROR] OUTPUT_DIR is under ${TOS3_DIR}, but ${TOS3_DIR} is not a mountpoint in this job." >&2
-  echo "[ERROR] Use a GPFS output dir first, e.g. /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/..., then copy to tos3 after merging." >&2
+if [ -z "${PI0_PATH}" ]; then
+  echo "[ERROR] PI0_PATH is not set. Export PI0_PATH or pass -e PI0_PATH=... in the rjob submitter." >&2
   exit 1
 fi
 
@@ -87,15 +76,19 @@ fi
 
 echo "==== Local cache copy ===="
 mkdir -p /root/.cache
-cp -r /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/libero /root/.cache/ || true
-cp -r /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface /root/.cache/ || true
+if [ -n "${LOCAL_CACHE_SOURCE:-}" ] && [ -d "${LOCAL_CACHE_SOURCE}" ]; then
+  cp -r "${LOCAL_CACHE_SOURCE}/." /root/.cache/ || true
+fi
 
 echo "==== Project & Python env ===="
 cd "${PROJECT_DIR}"
-ENV="${ENV_DIR}"
-PYTHON="${ENV}/bin/python"
-if [ ! -x "${PYTHON}" ]; then
-  echo "[ERROR] Python executable not found: ${PYTHON}" >&2
+if [ -n "${ENV_DIR}" ]; then
+  PYTHON="${ENV_DIR}/bin/python"
+else
+  PYTHON="${PYTHON:-$(command -v python)}"
+fi
+if [ -z "${PYTHON}" ] || [ ! -x "${PYTHON}" ]; then
+  echo "[ERROR] Python executable not found. Set ENV_DIR or PYTHON." >&2
   exit 1
 fi
 "${PYTHON}" -V

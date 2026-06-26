@@ -47,19 +47,11 @@ python -m py_compile \
 
 ### Option B: Real PI0 / PI0.5 + LIBERO Environment
 
-Real model and simulator runs require Linux + GPU + MuJoCo/EGL. The known working setup used during development is:
+Real model and simulator runs require Linux + GPU + MuJoCo/EGL. A generic setup is:
 
 ```bash
-conda activate /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/lerobot
-cd /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_interpretability_handoff
-source scripts/setup_cluster_env.sh
-```
-
-If the recipient needs to build a new environment from scratch:
-
-```bash
-conda create -y -p /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/vla_interpretability python=3.10
-conda activate /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/my_env/vla_interpretability
+conda create -y -n vla-interpretability-real python=3.10
+conda activate vla-interpretability-real
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install "lerobot[pi,libero]@git+https://github.com/huggingface/lerobot.git"
@@ -75,23 +67,28 @@ sudo apt install -y libegl1 libopengl0 libgl1 mesa-utils
 
 If `sudo` is unavailable inside the job container, use an image that already contains these libraries.
 
-### Cluster Cache and Checkpoints
+### Checkpoints and Optional Cache Settings
 
-The helper script sets the environment variables used by all demos:
-
-```bash
-cd /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/project/vla_interpretability_handoff
-source scripts/setup_cluster_env.sh
-```
-
-Common checkpoint paths used during development:
+The core code only requires checkpoint paths and normal MuJoCo/LeRobot environment variables. Set these for your own machine:
 
 ```bash
-export PI05_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi05_libero_finetuned_v044/snapshots/dbf8a3f794a9c4297b44f40b752712f50073d945
-export PI0_PATH=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/cache/huggingface/hub/models--lerobot--pi0_libero_finetuned/snapshots/45dcc8fc0e02601c8ccf0554fbd1d26a55070c1f
+export MUJOCO_GL=egl
+export PI05_PATH=/path/to/pi05_libero_finetuned_snapshot_or_repo
+export PI0_PATH=/path/to/pi0_libero_finetuned_snapshot_or_repo
 ```
 
-If the checkpoints are not present locally, download them before setting `HF_HUB_OFFLINE=1`, or point `PI05_PATH` / `PI0_PATH` to the local snapshot directories.
+Optional cache variables, useful on clusters but not required:
+
+```bash
+export HF_HOME=/path/to/huggingface_cache
+export TORCH_HOME=/path/to/torch_cache
+export LIBERO_ASSETS_PATH=/path/to/libero/assets
+export HF_LEROBOT_HOME=/path/to/lerobot_dataset_cache
+```
+
+If the checkpoints are not present locally, download them first or point `PI05_PATH` / `PI0_PATH` to the local snapshot directories. Use `HF_HUB_OFFLINE=1` only if the checkpoints are already available locally.
+
+For the original PJLab cluster layout used during development, `scripts/setup_cluster_env.sh` can be sourced after overriding `USER_ROOT`, `PI0_PATH`, and `PI05_PATH` as needed. If you are not on that cluster, you can ignore this helper.
 
 ### Environment Smoke Tests
 
@@ -194,6 +191,12 @@ By default, the policy replans every environment step and saves all 36 layers of
 
 **Collect rollouts.**
 
+Choose an output directory first:
+
+```bash
+export ROLLOUT_DIR="$PWD/outputs/rollouts/pi0_libero_spatial_task1_full_tokens_30interval"
+```
+
 ```bash
 python scripts/09_collect_pi0_libero_rollouts.py \
   --config configs/demo.yaml \
@@ -201,7 +204,7 @@ python scripts/09_collect_pi0_libero_rollouts.py \
   --task libero_spatial \
   --task-id 1 \
   --instruction "pick up the black bowl from table center and place it on the plate" \
-  --output-dir /mnt/shared-storage-user/xiaojiahao/tos3/xiaojiahao/VLA-Probe/pi0_libero_spatial_task1_full_tokens_30interval \
+  --output-dir "$ROLLOUT_DIR" \
   --num-episodes 2 \
   --max-steps 250 \
   --replan-interval 30 \
@@ -237,7 +240,7 @@ rollout_dir/
 ```bash
 python scripts/13_analyze_pi0_dynamic_circuit.py \
   --config configs/demo.yaml \
-  --rollout-dir /mnt/shared-storage-user/xiaojiahao/tos3/xiaojiahao/VLA-Probe/pi0_libero_spatial_task1_full_tokens_30interval \
+  --rollout-dir "$ROLLOUT_DIR" \
   --pooling mean \
   --targets pickup_offset place_offset action policy_pred_action progress
 ```
@@ -246,10 +249,14 @@ This writes a timestamped run under the corresponding `VLA-Probe-Analysis` direc
 
 **Render dashboard video.**
 
+Set `ANALYSIS_DIR` to the timestamped directory printed by `scripts/13_analyze_pi0_dynamic_circuit.py`, for example `outputs/analysis/.../runs/20260626_120000_pool-mean_seed-42`.
+
 ```bash
+export ANALYSIS_DIR=/path/to/pi0_dynamic_analysis_run
+
 python scripts/14_render_pi0_dynamic_episode_video.py \
-  --analysis-dir /mnt/shared-storage-user/xiaojiahao/tos3/xiaojiahao/VLA-Probe-Analysis/pi0_libero_spatial_task1_full_tokens_30interval/runs/YOUR_RUN_NAME \
-  --rollout-dir /mnt/shared-storage-user/xiaojiahao/tos3/xiaojiahao/VLA-Probe/pi0_libero_spatial_task1_full_tokens_30interval \
+  --analysis-dir "$ANALYSIS_DIR" \
+  --rollout-dir "$ROLLOUT_DIR" \
   --episode-index 0 \
   --targets pickup_offset place_offset action policy_pred_action progress \
   --format mp4 \
@@ -290,13 +297,19 @@ mean_policy_action_delta_l2
 
 This is the average L2 difference between the ablated policy action and the baseline policy action at matched rollout steps. Larger values mean the ablated layer/bin has larger causal effect on action output.
 
+Choose an output directory:
+
+```bash
+export ABLATION_DIR="$PWD/outputs/ablation/pi0_ablation_spatial_task1_full_sweep"
+```
+
 **Run one baseline.**
 
 ```bash
 python scripts/16_sweep_pi0_activation_ablation.py \
   --config configs/demo.yaml \
   --pi0-path "$PI0_PATH" \
-  --output-dir /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep \
+  --output-dir "$ABLATION_DIR" \
   --task libero_spatial \
   --task-id 1 \
   --instruction "pick up the black bowl from table center and place it on the plate" \
@@ -316,8 +329,8 @@ python scripts/16_sweep_pi0_activation_ablation.py \
 python scripts/16_sweep_pi0_activation_ablation.py \
   --config configs/demo.yaml \
   --pi0-path "$PI0_PATH" \
-  --output-dir /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep \
-  --baseline-dir /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep/baseline \
+  --output-dir "$ABLATION_DIR" \
+  --baseline-dir "$ABLATION_DIR/baseline" \
   --skip-baseline \
   --task libero_spatial \
   --task-id 1 \
@@ -351,9 +364,12 @@ NUM_SHARDS=8 \
 NUM_EPISODES=2 \
 MAX_STEPS=250 \
 BIN_STRIDE=4 \
-OUTPUT_DIR=/mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep \
+PI0_PATH="$PI0_PATH" \
+OUTPUT_DIR="$ABLATION_DIR" \
 bash scripts/rjob_submit_pi0_ablation_sweep.sh
 ```
+
+The rjob submitter is a PJLab-style template. On another cluster, either run `scripts/16_sweep_pi0_activation_ablation.py` directly or edit the rjob resource flags and mount settings in `scripts/rjob_submit_pi0_ablation_sweep.sh`.
 
 If the cluster allows only four concurrent jobs, use:
 
@@ -365,10 +381,10 @@ NUM_SHARDS=4 BIN_STRIDE=4 bash scripts/rjob_submit_pi0_ablation_sweep.sh
 
 ```bash
 python scripts/17_merge_pi0_ablation_shards.py \
-  --input-dir /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep
+  --input-dir "$ABLATION_DIR"
 
 python scripts/18_plot_pi0_ablation_heatmaps.py \
-  --input-dir /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep \
+  --input-dir "$ABLATION_DIR" \
   --metrics mean_policy_action_delta_l2 mean_gripper_position_delta_l2 success_gain \
   --annotate-top 20 \
   --top-k 50
@@ -378,7 +394,7 @@ For one unmerged shard:
 
 ```bash
 python scripts/19_plot_single_pi0_ablation_shard.py \
-  /mnt/shared-storage-user/xiaojiahao/trans/xiaojiahao/VLA-Probe/pi0_ablation_spatial_task1_full_sweep/shard_00_of_08
+  "$ABLATION_DIR/shard_00_of_08"
 ```
 
 Expected outputs:
